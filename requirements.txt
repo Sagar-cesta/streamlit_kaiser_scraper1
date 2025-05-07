@@ -4,5 +4,7 @@ beautifulsoup4
 pandas
 lxml
 selenium
+webdriver-manager
+
 
 
