@@ -1,60 +1,34 @@
 import streamlit as st
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-import time
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
-st.set_page_config(page_title="Kaiser File Scraper", layout="wide")
-st.title("🗂️ Kaiser Permanente Machine-Readable File Extractor")
+st.set_page_config(page_title="Kaiser File Extractor", layout="wide")
+st.title("📂 Kaiser Permanente File Extractor")
 
-# Input form
-with st.form("scraper_form"):
-    url = st.text_input("🔗 Enter the transparency page URL:", 
-                        value="https://healthy.kaiserpermanente.org/northern-california/front-door/machine-readable")
-    submit = st.form_submit_button("Get Downloadable Files")
+url = st.text_input("🔗 Enter a Kaiser Permanente Transparency URL")
 
-if submit:
-    st.info("⏳ Scraping Kaiser page... please wait up to 30 seconds.")
-
-    # Setup Selenium in headless mode
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--window-size=1920,1080")
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-
+if st.button("Get Downloadable Files") and url:
     try:
-        driver.get(url)
-        time.sleep(5)
+        st.info("🔄 Scraping... Please wait.")
+        response = requests.get(url)
+        soup = BeautifulSoup(response.content, "lxml")
 
-        # Expand all dropdowns (+)
-        expand_buttons = driver.find_elements(By.CSS_SELECTOR, "button[data-analytics-label='Expand']")
-        for btn in expand_buttons:
-            driver.execute_script("arguments[0].click();", btn)
-            time.sleep(1)
+        links = soup.find_all("a", href=True)
+        download_links = []
 
-        # Find all download links
-        download_links = driver.find_elements(By.LINK_TEXT, "download")
+        for a in links:
+            if 'download' in a.text.lower() or any(a['href'].endswith(ext) for ext in ['.zip', '.json']):
+                full_url = urljoin(url, a['href'])
+                label = a.text.strip() or full_url.split("/")[-1]
+                download_links.append((label, full_url))
 
-        files = []
-        for link in download_links:
-            href = link.get_attribute("href")
-            if href and (href.endswith(".zip") or href.endswith(".json")):
-                file_name = href.split("/")[-1]
-                files.append((file_name, href))
-
-        if files:
-            st.success(f"✅ Found {len(files)} downloadable files.")
-            for name, link in files:
-                st.markdown(f"[📄 {name}]({link})", unsafe_allow_html=True)
+        if download_links:
+            st.success(f"✅ Found {len(download_links)} downloadable files:")
+            for label, link in download_links:
+                st.markdown(f"[📥 {label}]({link})")
         else:
-            st.warning("⚠️ No .zip or .json files found.")
-
+            st.warning("⚠️ No downloadable .zip or .json files found.")
     except Exception as e:
-        st.error(f"❌ Error occurred: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
 
-    finally:
-        driver.quit()
